@@ -29,8 +29,8 @@ async function addWelcomePosts() {
           email: 'system@icorkit.com',
           displayName: 'iCorkIt System',
           password: 'system-user-password-hash',
-          corkits: 1000,
-          pinsRemaining: 1000,
+          socialPins: 1000,
+          pinPacks: 1000,
           isAdmin: true
         }
       })

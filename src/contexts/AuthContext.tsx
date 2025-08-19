@@ -38,6 +38,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const verifyToken = async (token: string) => {
     try {
+      console.log('Verifying token...')
       const response = await fetch('/api/auth/verify', {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -46,14 +47,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (response.ok) {
         const userData = await response.json()
+        console.log('Token verified, user:', userData.user)
         setUser(userData.user)
       } else {
+        console.log('Token verification failed, removing token')
         localStorage.removeItem('authToken')
       }
     } catch (error) {
       console.error('Token verification failed:', error)
       localStorage.removeItem('authToken')
     } finally {
+      console.log('Setting loading to false')
       setIsLoading(false)
     }
   }

@@ -48,28 +48,47 @@ export default function ExplorePage() {
   useEffect(() => {
     fetchBoards()
     fetchCities()
+    
+    // Safety timeout to prevent infinite loading
+    const timeout = setTimeout(() => {
+      if (loading) {
+        console.log('Loading timeout reached, forcing loading to false')
+        setLoading(false)
+      }
+    }, 10000) // 10 second timeout
+
+    return () => clearTimeout(timeout)
   }, [])
 
   const fetchBoards = async () => {
     try {
+      console.log('Fetching boards...')
       const response = await fetch('/api/boards')
       if (response.ok) {
         const data = await response.json()
+        console.log('Boards fetched:', data.boards.length)
         setBoards(data.boards)
+      } else {
+        console.error('Failed to fetch boards:', response.status)
       }
     } catch (error) {
       console.error('Error fetching boards:', error)
     } finally {
+      console.log('Setting loading to false')
       setLoading(false)
     }
   }
 
   const fetchCities = async () => {
     try {
+      console.log('Fetching cities...')
       const response = await fetch('/api/cities')
       if (response.ok) {
         const data = await response.json()
+        console.log('Cities fetched:', data.cities.length)
         setCities(data.cities)
+      } else {
+        console.error('Failed to fetch cities:', response.status)
       }
     } catch (error) {
       console.error('Error fetching cities:', error)
@@ -89,8 +108,8 @@ export default function ExplorePage() {
     'North Dakota', 'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania', 'Rhode Island', 'South Carolina',
     'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia', 'Washington', 'West Virginia',
     'Wisconsin', 'Wyoming',
-    // Cities from database
-    ...cities.map(city => `${city.name}, ${city.state}`)
+    // Cities from database (only when cities are loaded)
+    ...(cities && cities.length > 0 ? cities.map(city => `${city.name}, ${city.state}`) : [])
   ]
 
   // Unified search function
