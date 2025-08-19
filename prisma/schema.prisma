@@ -1,0 +1,138 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// User model for authentication and profiles
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  displayName    String
+  password       String
+  socialPins     Int      @default(200)  // Reusable pins for social boards
+  pinPacks       Int      @default(0)    // Purchased pin packs for location boards
+  isAdmin        Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  
+  // Relations
+  posts          Post[]
+  pins           Pin[]
+  boards         Board[]  @relation("BoardOwner")
+  socialBoards   Board[]  @relation("SocialBoardOwner")
+  pinPurchases   PinPurchase[] // Track pin pack purchases
+}
+
+model Board {
+  id              String   @id @default(cuid())
+  name            String
+  type            String   // "NATIONAL", "STATE", "CITY", "SOCIAL"
+  description     String?
+  isPrivate       Boolean  @default(false)
+  city            String?
+  state           String?
+  zipCode         String?
+  country         String   @default("USA")
+  
+  // Admin approval for location boards
+  isApproved      Boolean  @default(false)
+  approvedBy      String?
+  approvedAt      DateTime?
+  rejectionReason String?
+  
+  // Board ownership
+  ownerId         String?
+  owner           User?    @relation("BoardOwner", fields: [ownerId], references: [id])
+  
+  // Social board ownership
+  socialOwnerId   String?
+  socialOwner     User?    @relation("SocialBoardOwner", fields: [socialOwnerId], references: [id])
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Relations
+  posts          Post[]
+  pins           Pin[]
+  
+  @@unique([type, city, state, country])
+}
+
+// Posts on boards
+model Post {
+  id          String    @id @default(cuid())
+  title       String
+  content     String
+  type        String    // ADVERTISEMENT, SOCIAL, SERVICE, ANNOUNCEMENT, EVENT, LOST_FOUND, OTHER
+  status      String    @default("ACTIVE") // ACTIVE, INACTIVE, MODERATED, DELETED
+  
+  // Position on the cork board
+  positionX   Int       @default(100)
+  positionY   Int       @default(100)
+  
+  // Media attachments
+  images      String   @default("[]") // JSON string for SQLite compatibility
+  attachments String   @default("[]") // JSON string for SQLite compatibility
+  
+  // Location and categories
+  location    String?
+  category    String?
+  tags        String   @default("[]") // JSON string for SQLite compatibility
+  
+  // Engagement metrics
+  viewCount   Int       @default(0)
+  likeCount   Int       @default(0)
+  commentCount Int      @default(0)
+  
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  // Relations
+  boardId     String?
+  board       Board?    @relation(fields: [boardId], references: [id])
+  authorId    String
+  author      User      @relation(fields: [authorId], references: [id])
+  pins        Pin[]
+}
+
+// Pins for posts (pinning system)
+model Pin {
+  id                String   @id @default(cuid())
+  postId            String
+  boardId           String?
+  userId            String
+  pinType           String   @default("REGULAR") // "SOCIAL" or "REGULAR"
+  pinsUsed          Int      // Number of pins used (1 pin = 1 day)
+  daysPinned        Int      // Number of days the post is pinned
+  startDate         DateTime @default(now())
+  endDate           DateTime
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  post              Post     @relation(fields: [postId], references: [id])
+  board             Board?   @relation(fields: [boardId], references: [id])
+  user              User     @relation(fields: [userId], references: [id])
+}
+
+// Track social pin pack purchases
+model PinPurchase {
+  id            String   @id @default(cuid())
+  userId        String
+  packSize      Int      // Number of pins in the pack (e.g., 25)
+  price         Float    // Price paid (e.g., 10.00)
+  purchaseDate  DateTime @default(now())
+  stripePaymentIntentId String? // Stripe payment intent ID
+  
+  // Relations
+  user          User     @relation(fields: [userId], references: [id])
+}
