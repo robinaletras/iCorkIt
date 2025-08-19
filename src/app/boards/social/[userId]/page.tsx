@@ -18,13 +18,31 @@ export default function SocialBoardPage({ params }: SocialBoardPageProps) {
   useEffect(() => {
     const fetchUserInfo = async () => {
       try {
-        // First get user info
-        const userResponse = await fetch(`/api/users/${params.userId}`)
-        if (userResponse.ok) {
-          const userData = await userResponse.json()
-          
+        // Check if params.userId is an email or user ID
+        const isEmail = params.userId.includes('@')
+        
+        let userData
+        if (isEmail) {
+          // If it's an email, find user by email first
+          const userResponse = await fetch(`/api/users/email/${encodeURIComponent(params.userId)}`)
+          if (userResponse.ok) {
+            userData = await userResponse.json()
+          } else {
+            throw new Error('User not found by email')
+          }
+        } else {
+          // If it's a user ID, fetch directly
+          const userResponse = await fetch(`/api/users/${params.userId}`)
+          if (userResponse.ok) {
+            userData = await userResponse.json()
+          } else {
+            throw new Error('User not found by ID')
+          }
+        }
+        
+        if (userData?.user) {
           // Then get the user's social board
-          const boardResponse = await fetch(`/api/boards?type=SOCIAL&socialOwnerId=${params.userId}`)
+          const boardResponse = await fetch(`/api/boards?type=SOCIAL&socialOwnerId=${userData.user.id}`)
           if (boardResponse.ok) {
             const boardData = await boardResponse.json()
             const socialBoard = boardData.boards?.[0]
@@ -38,26 +56,21 @@ export default function SocialBoardPage({ params }: SocialBoardPageProps) {
             } else {
               // Fallback if no social board found
               setUserInfo({
-                id: params.userId,
+                id: userData.user.id,
                 displayName: userData.user.displayName,
-                socialBoardId: params.userId
+                socialBoardId: userData.user.id
               })
             }
           } else {
             // Fallback if board fetch fails
             setUserInfo({
-              id: params.userId,
+              id: userData.user.id,
               displayName: userData.user.displayName,
-              socialBoardId: params.userId
+              socialBoardId: userData.user.id
             })
           }
         } else {
-          // Fallback to mock data if user not found
-          setUserInfo({
-            id: params.userId,
-            displayName: `User ${params.userId}`,
-            socialBoardId: params.userId
-          })
+          throw new Error('Invalid user data')
         }
       } catch (error) {
         console.error('Error fetching user info:', error)

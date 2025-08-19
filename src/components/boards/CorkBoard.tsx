@@ -56,6 +56,16 @@ export function CorkBoard({ boardId, boardName, boardType, cityName, stateCode }
 
   console.log('🔍 CorkBoard component mounted with boardId:', boardId)
 
+  // Monitor pin modal state changes
+  useEffect(() => {
+    console.log('Pin modal state changed - isPinPostOpen:', isPinPostOpen, 'postToPin:', postToPin)
+  }, [isPinPostOpen, postToPin])
+
+  // Monitor postToPin state changes specifically
+  useEffect(() => {
+    console.log('postToPin state changed to:', postToPin)
+  }, [postToPin])
+
   // Load posts on mount
   useEffect(() => {
     console.log('🔍 useEffect triggered for board:', boardId, 'type:', boardType)
@@ -252,27 +262,7 @@ export function CorkBoard({ boardId, boardName, boardType, cityName, stateCode }
     document.addEventListener('mouseup', handleMouseUp)
   }
 
-  // Helper function to get pin button text
-  const getPinButtonText = (post: Post) => {
-    if (!post.isPinned) return 'Pin Post'
-    
-    const daysRemaining = post.pinDaysRemaining || 0
-    if (daysRemaining >= 7) return 'MAX'
-    if (daysRemaining > 0) return `Add Days (${daysRemaining} left)`
-    
-    return 'Pin Post'
-  }
-
-  // Helper function to get pin button state
-  const getPinButtonState = (post: Post) => {
-    if (!post.isPinned) return { disabled: false, className: 'bg-amber-600 text-white hover:bg-amber-700' }
-    
-    const daysRemaining = post.pinDaysRemaining || 0
-    if (daysRemaining >= 7) return { disabled: true, className: 'bg-gray-400 text-gray-600 cursor-not-allowed' }
-    if (daysRemaining > 0) return { disabled: false, className: 'bg-blue-600 text-white hover:bg-blue-700' }
-    
-    return { disabled: false, className: 'bg-amber-600 text-white hover:bg-amber-700' }
-  }
+  // Helper functions removed - now using simple toggle system
 
   // Post actions
   const handlePostClick = (post: Post) => {
@@ -290,8 +280,22 @@ export function CorkBoard({ boardId, boardName, boardType, cityName, stateCode }
     )
   }
 
-  const handlePinPost = async () => {
-    if (!postToPin || !user) return
+  const handlePinPost = async (post?: Post) => {
+    // Use the passed post parameter or fall back to state
+    const postToPinData = post || postToPin
+    console.log('handlePinPost called with:', { postToPinData, user, pinDuration, post, postToPin })
+    if (!postToPinData || !user) {
+      console.log('Missing postToPin or user, returning early')
+      return
+    }
+
+    // If post is already pinned, unpin it instead
+    if (postToPinData.isPinned) {
+      await handleUnpinPost(postToPinData)
+      // Close the modal after unpinning
+      setSelectedPost(null)
+      return
+    }
 
     const pinsNeeded = pinDuration
 
@@ -322,7 +326,7 @@ export function CorkBoard({ boardId, boardName, boardType, cityName, stateCode }
           'Authorization': `Bearer ${localStorage.getItem('authToken')}`
         },
         body: JSON.stringify({
-          postId: postToPin.id,
+          postId: postToPinData.id,
           boardId: boardId,
           daysPinned: pinDuration
         })
@@ -347,8 +351,7 @@ export function CorkBoard({ boardId, boardName, boardType, cityName, stateCode }
         // Refresh posts to show updated pin status
         refreshPosts()
         
-        // Show success message
-        alert('Post pinned successfully!')
+        // No success message - user can see the pin status visually
       } else {
         const error = await response.json()
         alert(`Failed to pin post: ${error.error}`)
@@ -356,6 +359,53 @@ export function CorkBoard({ boardId, boardName, boardType, cityName, stateCode }
     } catch (error) {
       console.error('Error pinning post:', error)
       alert('Failed to pin post')
+    }
+  }
+
+  const handleUnpinPost = async (post: Post) => {
+    if (!user) {
+      alert('Please sign in to unpin posts')
+      return
+    }
+
+    try {
+      const response = await fetch('/api/pins/remove', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        },
+        body: JSON.stringify({
+          postId: post.id,
+          boardId: boardId
+        })
+      })
+
+      if (response.ok) {
+        // Get the pin data to know how many pins to return
+        const pinData = await response.json()
+        
+        // Return pins to user's balance (only for social boards)
+        if (boardType === 'SOCIAL' && pinData.pinsReturned) {
+          const newSocialPins = user.socialPins + pinData.pinsReturned
+          updateSocialPins(newSocialPins)
+          // No alert - user can see the post is unpinned visually
+        }
+        
+        // Close post detail modal if it's open
+        if (selectedPost?.id === post.id) {
+          setSelectedPost(null)
+        }
+        
+        // Refresh posts to show updated pin status
+        refreshPosts()
+      } else {
+        const error = await response.json()
+        alert(`Failed to unpin post: ${error.error}`)
+      }
+    } catch (error) {
+      console.error('Error unpinning post:', error)
+      alert('Failed to unpin post')
     }
   }
 
@@ -435,7 +485,9 @@ export function CorkBoard({ boardId, boardName, boardType, cityName, stateCode }
   )
 
   // Pin Post Modal
-  const PinPostModal = () => (
+  const PinPostModal = () => {
+    console.log('PinPostModal rendering with postToPin:', postToPin)
+    return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
       <div className="bg-white rounded-xl shadow-2xl max-w-md w-full border-4 border-amber-300">
         <div className="p-6">
@@ -454,7 +506,7 @@ export function CorkBoard({ boardId, boardName, boardType, cityName, stateCode }
           <div className="mb-4">
             <p className="text-gray-600 mb-2">
               {postToPin?.isPinned 
-                ? `Add more days to "${postToPin?.title}" (currently has ${postToPin?.pinDaysRemaining || 0} days remaining)`
+                ? `Add more days to "${postToPin?.title}" (currently has ${postToPin?.pinDaysRemaining || 0} days remaining). The new days will be added to your existing pin time.`
                 : `Pin "${postToPin?.title}" to keep it visible on the board.`
               }
             </p>
@@ -476,16 +528,30 @@ export function CorkBoard({ boardId, boardName, boardType, cityName, stateCode }
           
           <div className="space-y-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Duration (days)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {postToPin?.isPinned ? 'Add More Days' : 'Duration (days)'}
+              </label>
               <select 
                 id="pinDuration"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent text-black bg-white"
                 onChange={(e) => setPinDuration(parseInt(e.target.value))}
                 defaultValue="1"
               >
-                <option value="1">1 day - 1 pin</option>
-                <option value="3">3 days - 3 pins</option>
-                <option value="7">7 days - 7 pins</option>
+                {postToPin?.isPinned ? (
+                  // For already pinned posts, show remaining days options
+                  <>
+                    <option value="1">+1 day - 1 pin</option>
+                    <option value="3">+3 days - 3 pins</option>
+                    <option value="7">+7 days - 7 pins</option>
+                  </>
+                ) : (
+                  // For new pins, show total duration options
+                  <>
+                    <option value="1">1 day - 1 pin</option>
+                    <option value="3">3 days - 3 pins</option>
+                    <option value="7">7 days - 7 pins</option>
+                  </>
+                )}
               </select>
             </div>
             
@@ -507,7 +573,7 @@ export function CorkBoard({ boardId, boardName, boardType, cityName, stateCode }
                 Cancel
               </button>
               <button
-                onClick={handlePinPost}
+                onClick={() => postToPin && handlePinPost(postToPin)}
                 className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
               >
                 {postToPin?.isPinned ? 'Add Days' : 'Pin Post'}
@@ -517,7 +583,8 @@ export function CorkBoard({ boardId, boardName, boardType, cityName, stateCode }
         </div>
       </div>
     </div>
-  )
+    )
+  }
 
   // Post Detail Modal
   const PostDetailModal = () => (
@@ -557,13 +624,25 @@ export function CorkBoard({ boardId, boardName, boardType, cityName, stateCode }
           
           <div className="flex items-center justify-between">
             <button
-              onClick={() => selectedPost && handlePinPost()}
-              disabled={getPinButtonState(selectedPost!).disabled}
+              onClick={async () => {
+                if (selectedPost) {
+                  if (selectedPost.isPinned) {
+                    // If already pinned, unpin it
+                    await handleUnpinPost(selectedPost)
+                  } else {
+                    // If not pinned, pin it and close the modal
+                    await handlePinPost(selectedPost)
+                    setSelectedPost(null) // Close the post detail modal
+                  }
+                }
+              }}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                getPinButtonState(selectedPost!).className
+                selectedPost?.isPinned 
+                  ? 'bg-red-600 text-white hover:bg-red-700' 
+                  : 'bg-amber-600 text-white hover:bg-amber-700'
               }`}
             >
-              {getPinButtonText(selectedPost!)}
+              {selectedPost?.isPinned ? 'Unpin Post' : 'Pin Post'}
             </button>
             
             {!selectedPost?.isPinned && (
@@ -750,25 +829,40 @@ export function CorkBoard({ boardId, boardName, boardType, cityName, stateCode }
                         <Share2 className="w-3 h-3" />
                         <span>{post.shares}</span>
                       </span>
-                      {/* Pin Button */}
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setPostToPin(post)
-                          setPinDuration(1)
-                          setIsPinPostOpen(true)
-                        }}
-                        disabled={getPinButtonState(post).disabled}
-                        className={`flex items-center space-x-1 transition-colors ${
-                          getPinButtonState(post).disabled 
-                            ? 'text-gray-400 cursor-not-allowed' 
-                            : 'hover:text-amber-600'
-                        }`}
-                        title={getPinButtonText(post)}
-                      >
-                        <Pin className="w-3 h-3" />
-                        <span className="text-xs">{getPinButtonText(post)}</span>
-                      </button>
+                      {/* Pin/Unpin Toggle Button - Only on Social Boards */}
+                      {boardType === 'SOCIAL' && (
+                        <button 
+                          onClick={async (e) => {
+                            e.stopPropagation()
+                            console.log('Pin/Unpin button clicked for post:', post.title)
+                            console.log('Post isPinned:', post.isPinned)
+                            
+                            if (post.isPinned) {
+                              // If already pinned, unpin directly
+                              console.log('Unpinning post:', post.title)
+                              await handleUnpinPost(post)
+                              console.log('Unpin completed, refreshing posts...')
+                            } else {
+                              // If not pinned, open pin modal
+                              console.log('Opening pin modal for post:', post.title)
+                              setPostToPin(post)
+                              setPinDuration(1)
+                              setIsPinPostOpen(true)
+                            }
+                          }}
+                          className={`flex items-center space-x-1 transition-colors ${
+                            post.isPinned 
+                              ? 'text-red-600 hover:text-red-700' 
+                              : 'text-amber-600 hover:text-amber-700'
+                          }`}
+                          title={post.isPinned ? 'Unpin Post' : 'Pin Post'}
+                        >
+                          <Pin className="w-3 h-3" />
+                          <span className="text-xs">
+                            {post.isPinned ? 'Unpin' : 'Pin'}
+                          </span>
+                        </button>
+                      )}
                     </div>
                     
                     {!post.isPinned && (
